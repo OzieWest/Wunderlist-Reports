@@ -1,63 +1,47 @@
 const moment = require('moment');
 const WunderlistSDK = require('wunderlist');
-const wunderlistAPI = new WunderlistSDK({
-  accessToken: process.env.WUNDER_SECRET,
-  clientID: process.env.WUNDER_ID
-});
+import { Config, WunderItem, WunderList } from './interfaces';
 
-export function getTasksByListId(summ: any, list: WunderList, completed?: boolean) {
-  return () => {
-    return new Promise((resolve, reject) => {
-      wunderlistAPI.http.tasks.forList(list.id, completed)
-        .done((data: Array<WunderItem>) => {
-          const start = moment().startOf('isoWeek');
-          data.filter(item => !item.recurrence_type && start < moment(item.completed_at)).forEach(item => {
-            const hours = moment(item.created_at).diff(item.completed_at, 'hours');
-            item.hours = hours < 0 ? hours * -1 : hours;
-            item.list = list.title;
+export class WunderClient {
+  client: any = null;
 
-            summ[list.title] = summ[list.title] || [];
-            summ[list.title].push(item);
-          });
-          resolve(data);
-        })
-        .fail(reject);
-    })
+  constructor(private config: Config) {
+    this.client = new WunderlistSDK({
+      accessToken: config.wunderSecret,
+      clientID: config.wunderId
+    });
   }
-}
 
-export function getListsAll() {
-  return new Promise((resolve, reject) => wunderlistAPI.http.lists.all().done(resolve).fail(reject));
-}
+  getTasksByListId(summ: any, list: WunderList, completed?: boolean): Function {
+    return () => {
+      return new Promise((resolve, reject) => {
+        this.client.http.tasks.forList(list.id, completed)
+          .done((data: Array<WunderItem>) => {
+            const start = this.config.startDate;
+            const end = this.config.endDate;
 
-export interface WunderList {
-  id: number;
-  title: string;
-  owner_type: string;
-  owner_id: number;
-  list_type: string;
-  public: boolean;
-  revision: number;
-  created_at: Date;
-  type: string;
-}
+            data
+              .filter(item => {
+                const current = moment(item.completed_at)
+                return !item.recurrence_type && start < current && end > current;
+              })
+              .forEach(item => {
+                const hours = moment(item.created_at).diff(item.completed_at, 'hours');
+                item.hours = hours < 0 ? hours * -1 : hours;
+                item.list = list.title;
 
-export interface WunderItem {
-  id: number;
-  created_at: Date;
-  created_by_id: number;
-  created_by_request_id: string;
-  recurrence_type: string;
-  recurrence_count: number;
-  due_date: string;
-  completed: boolean;
-  completed_at: Date;
-  completed_by_id: number;
-  starred: boolean;
-  list_id: number;
-  revision: number;
-  title: string;
-  type: string;
-  hours: number;
-  list: string;
+                summ[list.title] = summ[list.title] || [];
+                summ[list.title].push(item);
+              });
+              
+            resolve(data);
+          })
+          .fail(reject);
+      })
+    }
+  }
+
+  async getListsAll(): Promise<any> {
+    return new Promise((resolve, reject) => this.client.http.lists.all().done(resolve).fail(reject));
+  }
 }
